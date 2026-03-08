@@ -336,7 +336,16 @@
   <script src="https://unpkg.com/3d-force-graph"></script>
   <script>
     const COLORS = { OT: '#f59e0b', NT: '#38bdf8' };
-    const state = { raw: {}, level: 'book', minWeight: 25, search: '', selectedNodeId: null, searchIndex: [] };
+    const BOOK_NAMES = {
+      Gen: 'Genesis', Exod: 'Exodus', Lev: 'Leviticus', Num: 'Numbers', Deut: 'Deuteronomy', Josh: 'Joshua', Judg: 'Judges', Ruth: 'Ruth',
+      '1Sam': '1 Samuel', '2Sam': '2 Samuel', '1Kgs': '1 Kings', '2Kgs': '2 Kings', '1Chr': '1 Chronicles', '2Chr': '2 Chronicles', Ezra: 'Ezra', Neh: 'Nehemiah', Esth: 'Esther',
+      Job: 'Job', Ps: 'Psalms', Prov: 'Proverbs', Eccl: 'Ecclesiastes', Song: 'Song of Solomon', Isa: 'Isaiah', Jer: 'Jeremiah', Lam: 'Lamentations', Ezek: 'Ezekiel', Dan: 'Daniel',
+      Hos: 'Hosea', Joel: 'Joel', Amos: 'Amos', Obad: 'Obadiah', Jonah: 'Jonah', Mic: 'Micah', Nah: 'Nahum', Hab: 'Habakkuk', Zeph: 'Zephaniah', Hag: 'Haggai', Zech: 'Zechariah', Mal: 'Malachi',
+      Matt: 'Matthew', Mark: 'Mark', Luke: 'Luke', John: 'John', Acts: 'Acts', Rom: 'Romans', '1Cor': '1 Corinthians', '2Cor': '2 Corinthians', Gal: 'Galatians', Eph: 'Ephesians', Phil: 'Philippians', Col: 'Colossians',
+      '1Thess': '1 Thessalonians', '2Thess': '2 Thessalonians', '1Tim': '1 Timothy', '2Tim': '2 Timothy', Titus: 'Titus', Phlm: 'Philemon', Heb: 'Hebrews', Jas: 'James', '1Pet': '1 Peter', '2Pet': '2 Peter',
+      '1John': '1 John', '2John': '2 John', '3John': '3 John', Jude: 'Jude', Rev: 'Revelation'
+    };
+    const state = { raw: {}, level: 'book', minWeight: 25, search: '', selectedNodeId: null, searchIndex: [], verseCache: {} };
     const info = document.getElementById('info');
     const viz = document.getElementById('viz');
     const searchResults = document.getElementById('searchResults');
@@ -357,10 +366,11 @@
       .linkDirectionalParticleColor(() => '#a7f3d0')
       .onNodeHover(node => {
         if (!node) return;
-        info.innerHTML = `<h3>${node.label}</h3>
+        info.innerHTML = `<h3>${humanRef(node)}</h3>
           <p><b>Testament:</b> ${node.testament}</p>
           <p><b>Group:</b> ${node.group}</p>
           <p><b>Total connection weight:</b> ${node.weight.toLocaleString()}</p>
+          ${node.kind === 'verse' ? '<p class="muted">Tap/click to load the verse text.</p>' : ''}
           <p class="muted">${isMobile() ? 'Tap to center this node.' : 'Click to center this node.'}</p>`;
       })
       .onLinkHover(link => {
@@ -371,7 +381,8 @@
           <p><b>Weight:</b> ${link.weight.toLocaleString()}</p>
           <p class="muted">Higher weight = stronger cross-reference signal in the source dataset.</p>`;
       })
-      .onNodeClick(node => {
+      .onNodeClick(async node => {
+        state.selectedNodeId = node.id;
         const distance = isMobile() ? 180 : 140;
         const distRatio = 1 + distance / Math.hypot(node.x || 1, node.y || 1, node.z || 1);
         Graph.cameraPosition(
@@ -379,6 +390,21 @@
           node,
           1200
         );
+        Graph.nodeColor(n => n.id === state.selectedNodeId ? '#22c55e' : (COLORS[n.testament] || '#aaa'));
+        info.innerHTML = `<h3>${humanRef(node)}</h3>
+          <p><b>Testament:</b> ${node.testament}</p>
+          <p><b>Group:</b> ${node.group}</p>
+          <p><b>Total connection weight:</b> ${node.weight.toLocaleString()}</p>
+          ${node.kind === 'verse' ? '<p class="muted">Loading verse text…</p>' : ''}`;
+        if (node.kind === 'verse') {
+          const verseData = await fetchVerseText(node);
+          info.innerHTML = `<h3>${verseData.reference}</h3>
+            <p><b>Testament:</b> ${node.testament}</p>
+            <p><b>Group:</b> ${node.group}</p>
+            <p><b>Total connection weight:</b> ${node.weight.toLocaleString()}</p>
+            <p><b>Verse:</b> ${verseData.text}</p>
+            <p class="muted small">Source text: ${verseData.translation}</p>`;
+        }
         if (isMobile()) document.body.classList.remove('sidebar-open');
       });
 
@@ -402,11 +428,38 @@
         .replace(/verse|chapter|book/g, '');
     }
 
+    function humanRef(nodeOrId) {
+      const parts = typeof nodeOrId === 'string' ? nodeOrId.split('.') : [nodeOrId.book, nodeOrId.chapter, nodeOrId.verse];
+      const [book, chapter, verse] = parts;
+      const bookName = BOOK_NAMES[book] || book;
+      if (chapter && verse) return `${bookName} ${chapter}:${verse}`;
+      if (chapter) return `${bookName} ${chapter}`;
+      return bookName;
+    }
+
+    async function fetchVerseText(node) {
+      if (!node || node.kind !== 'verse' || !node.chapter || !node.verse) return null;
+      if (state.verseCache[node.id]) return state.verseCache[node.id];
+      const ref = encodeURIComponent(humanRef(node));
+      try {
+        const res = await fetch(`https://bible-api.com/${ref}?translation=kjv`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const text = (data.text || '').replace(/\s+/g, ' ').trim();
+        if (!text) throw new Error('No verse text');
+        state.verseCache[node.id] = { reference: data.reference || humanRef(node), text, translation: (data.translation_name || 'KJV') };
+        return state.verseCache[node.id];
+      } catch (err) {
+        state.verseCache[node.id] = { reference: humanRef(node), text: 'Verse text unavailable right now.', translation: 'Unavailable' };
+        return state.verseCache[node.id];
+      }
+    }
+
     function buildSearchIndex() {
       const entries = [];
       for (const level of ['book', 'chapter', 'verse']) {
         for (const node of state.raw[level].nodes) {
-          const pretty = node.id.replace(/\./g, ':').replace(/:(\d+):(\d+)$/, ' $1:$2').replace(/:(\d+)$/, ' $1');
+          const pretty = humanRef(node);
           entries.push({
             id: node.id,
             level,
@@ -540,11 +593,19 @@
           node,
           1200
         );
-        info.innerHTML = `<h3>${node.label}</h3>
-          <p><b>Testament:</b> ${node.testament}</p>
-          <p><b>Group:</b> ${node.group}</p>
-          <p><b>Total connection weight:</b> ${node.weight.toLocaleString()}</p>
-          <p class="muted">Focused from search.</p>`;
+        if (node.kind === 'verse') {
+          info.innerHTML = `<h3>${humanRef(node)}</h3>
+            <p><b>Testament:</b> ${node.testament}</p>
+            <p><b>Group:</b> ${node.group}</p>
+            <p><b>Total connection weight:</b> ${node.weight.toLocaleString()}</p>
+            <p class="muted">Focused from search. Tap/click again to load the verse text.</p>`;
+        } else {
+          info.innerHTML = `<h3>${humanRef(node)}</h3>
+            <p><b>Testament:</b> ${node.testament}</p>
+            <p><b>Group:</b> ${node.group}</p>
+            <p><b>Total connection weight:</b> ${node.weight.toLocaleString()}</p>
+            <p class="muted">Focused from search.</p>`;
+        }
       }, 150);
 
       if (isMobile()) document.body.classList.remove('sidebar-open');
