@@ -1,0 +1,311 @@
+{
+  "bookLinks": 864,
+  "chapterLinks": 22661,
+  "verseLinks": 30226,
+  "bookTopLinks": [
+    {
+      "source": "Matt",
+      "target": "Ps",
+      "weight": 8384
+    },
+    {
+      "source": "Matt",
+      "target": "Isa",
+      "weight": 7326
+    },
+    {
+      "source": "Rom",
+      "target": "Ps",
+      "weight": 5827
+    },
+    {
+      "source": "Heb",
+      "target": "Ps",
+      "weight": 5813
+    },
+    {
+      "source": "John",
+      "target": "Isa",
+      "weight": 5778
+    },
+    {
+      "source": "Luke",
+      "target": "Ps",
+      "weight": 5602
+    },
+    {
+      "source": "John",
+      "target": "Ps",
+      "weight": 4833
+    },
+    {
+      "source": "Luke",
+      "target": "Isa",
+      "weight": 4496
+    },
+    {
+      "source": "Rev",
+      "target": "Isa",
+      "weight": 3526
+    },
+    {
+      "source": "Matt",
+      "target": "Prov",
+      "weight": 3258
+    },
+    {
+      "source": "Acts",
+      "target": "Ps",
+      "weight": 2905
+    },
+    {
+      "source": "Rom",
+      "target": "Isa",
+      "weight": 2802
+    },
+    {
+      "source": "Heb",
+      "target": "Isa",
+      "weight": 2699
+    },
+    {
+      "source": "Phil",
+      "target": "Isa",
+      "weight": 2697
+    },
+    {
+      "source": "Rom",
+      "target": "Jer",
+      "weight": 2629
+    },
+    {
+      "source": "Rev",
+      "target": "Ps",
+      "weight": 2575
+    },
+    {
+      "source": "Acts",
+      "target": "Isa",
+      "weight": 2529
+    },
+    {
+      "source": "1Pet",
+      "target": "Ps",
+      "weight": 2438
+    },
+    {
+      "source": "Jas",
+      "target": "Prov",
+      "weight": 2311
+    },
+    {
+      "source": "Phil",
+      "target": "Ps",
+      "weight": 2182
+    }
+  ],
+  "chapterTopLinks": [
+    {
+      "source": "Rom.8",
+      "target": "Jer.1",
+      "weight": 1382
+    },
+    {
+      "source": "Phil.4",
+      "target": "Isa.41",
+      "weight": 1004
+    },
+    {
+      "source": "Phil.4",
+      "target": "Isa.40",
+      "weight": 547
+    },
+    {
+      "source": "Heb.13",
+      "target": "Isa.41",
+      "weight": 537
+    },
+    {
+      "source": "Matt.6",
+      "target": "Ps.37",
+      "weight": 490
+    },
+    {
+      "source": "Phil.4",
+      "target": "Prov.3",
+      "weight": 485
+    },
+    {
+      "source": "2Cor.5",
+      "target": "Ezek.36",
+      "weight": 446
+    },
+    {
+      "source": "Matt.24",
+      "target": "Isa.40",
+      "weight": 434
+    },
+    {
+      "source": "Heb.8",
+      "target": "Jer.31",
+      "weight": 427
+    },
+    {
+      "source": "Matt.6",
+      "target": "Ps.34",
+      "weight": 415
+    },
+    {
+      "source": "John.1",
+      "target": "Gen.1",
+      "weight": 398
+    },
+    {
+      "source": "Rom.12",
+      "target": "Ps.119",
+      "weight": 389
+    },
+    {
+      "source": "Matt.4",
+      "target": "Deut.8",
+      "weight": 383
+    },
+    {
+      "source": "Phil.4",
+      "target": "Ps.55",
+      "weight": 382
+    },
+    {
+      "source": "Rom.8",
+      "target": "Gen.50",
+      "weight": 379
+    },
+    {
+      "source": "1Cor.16",
+      "target": "Josh.1",
+      "weight": 371
+    },
+    {
+      "source": "1Pet.5",
+      "target": "Ps.55",
+      "weight": 352
+    },
+    {
+      "source": "2Cor.6",
+      "target": "Exod.29",
+      "weight": 343
+    },
+    {
+      "source": "1Pet.2",
+      "target": "Isa.53",
+      "weight": 338
+    },
+    {
+      "source": "2Tim.3",
+      "target": "Ps.119",
+      "weight": 330
+    }
+  ],
+  "verseTopLinks": [
+    {
+      "source": "Rom.8.29",
+      "target": "Jer.1.5",
+      "weight": 1149
+    },
+    {
+      "source": "Phil.4.13",
+      "target": "Isa.41.10",
+      "weight": 999
+    },
+    {
+      "source": "Phil.4.13",
+      "target": "Isa.40.29",
+      "weight": 547
+    },
+    {
+      "source": "2Cor.5.17",
+      "target": "Ezek.36.26",
+      "weight": 446
+    },
+    {
+      "source": "Matt.24.35",
+      "target": "Isa.40.8",
+      "weight": 436
+    },
+    {
+      "source": "Phil.4.6",
+      "target": "Prov.3.5",
+      "weight": 406
+    },
+    {
+      "source": "Matt.4.4",
+      "target": "Deut.8.3",
+      "weight": 383
+    },
+    {
+      "source": "Rom.8.28",
+      "target": "Gen.50.20",
+      "weight": 379
+    },
+    {
+      "source": "Matt.6.33",
+      "target": "Ps.34.9",
+      "weight": 356
+    },
+    {
+      "source": "1Pet.5.7",
+      "target": "Ps.55.22",
+      "weight": 352
+    },
+    {
+      "source": "2Cor.6.16",
+      "target": "Exod.29.45",
+      "weight": 343
+    },
+    {
+      "source": "John.1.1",
+      "target": "Gen.1.1",
+      "weight": 331
+    },
+    {
+      "source": "Heb.8.10",
+      "target": "Ezek.36.26",
+      "weight": 328
+    },
+    {
+      "source": "1Cor.2.9",
+      "target": "Isa.64.4",
+      "weight": 318
+    },
+    {
+      "source": "Heb.13.6",
+      "target": "Ps.118.6",
+      "weight": 306
+    },
+    {
+      "source": "Phil.4.13",
+      "target": "Isa.45.24",
+      "weight": 301
+    },
+    {
+      "source": "Phil.4.6",
+      "target": "Ps.55.22",
+      "weight": 300
+    },
+    {
+      "source": "2Cor.5.17",
+      "target": "Isa.43.18",
+      "weight": 292
+    },
+    {
+      "source": "Rom.8.31",
+      "target": "Ps.118.6",
+      "weight": 286
+    },
+    {
+      "source": "1Cor.15.58",
+      "target": "2Chr.15.7",
+      "weight": 279
+    }
+  ]
+}
