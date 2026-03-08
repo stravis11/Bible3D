@@ -345,7 +345,7 @@
       '1Thess': '1 Thessalonians', '2Thess': '2 Thessalonians', '1Tim': '1 Timothy', '2Tim': '2 Timothy', Titus: 'Titus', Phlm: 'Philemon', Heb: 'Hebrews', Jas: 'James', '1Pet': '1 Peter', '2Pet': '2 Peter',
       '1John': '1 John', '2John': '2 John', '3John': '3 John', Jude: 'Jude', Rev: 'Revelation'
     };
-    const state = { raw: {}, level: 'book', minWeight: 25, search: '', selectedNodeId: null, searchIndex: [], verseCache: {}, userAdjustedMinWeight: false };
+    const state = { raw: {}, level: 'book', minWeight: 25, search: '', selectedNodeId: null, searchIndex: [], verseCache: {}, userAdjustedMinWeight: false, cameraDistance: null };
     const info = document.getElementById('info');
     const viz = document.getElementById('viz');
     const searchResults = document.getElementById('searchResults');
@@ -380,6 +380,10 @@
         info.innerHTML = `<h3>${source} → ${target}</h3>
           <p><b>Weight:</b> ${link.weight.toLocaleString()}</p>
           <p class="muted">Higher weight = stronger cross-reference signal in the source dataset.</p>`;
+      })
+      .onEngineStop(() => {
+        const pos = Graph.cameraPosition();
+        state.cameraDistance = Math.hypot(pos.x || 0, pos.y || 0, pos.z || 0);
       })
       .onNodeClick(async node => {
         state.selectedNodeId = node.id;
@@ -503,6 +507,23 @@
       if (level === 'verse') return 120;
       if (level === 'chapter') return 40;
       return 25;
+    }
+
+    function getCameraDistance() {
+      if (state.cameraDistance) return state.cameraDistance;
+      const pos = Graph.cameraPosition();
+      return Math.hypot(pos.x || 0, pos.y || 0, pos.z || 0) || (isMobile() ? 520 : 450);
+    }
+
+    function getVerseZoomConfig() {
+      const distance = getCameraDistance();
+      if (distance > 430) {
+        return { cap: isMobile() ? 320 : 550, extraWeight: 65, nodeScale: 1.45, linkOpacity: isMobile() ? 0.03 : 0.04, linkWidthScale: 0.15, distance: isMobile() ? 42 : 52, charge: isMobile() ? -40 : -58, label: 'overview' };
+      }
+      if (distance > 260) {
+        return { cap: isMobile() ? 700 : 1200, extraWeight: 25, nodeScale: 1.25, linkOpacity: isMobile() ? 0.045 : 0.06, linkWidthScale: 0.2, distance: isMobile() ? 36 : 44, charge: isMobile() ? -36 : -54, label: 'mid-zoom' };
+      }
+      return { cap: isMobile() ? 1400 : 2400, extraWeight: 0, nodeScale: 1.1, linkOpacity: isMobile() ? 0.07 : 0.09, linkWidthScale: 0.28, distance: isMobile() ? 30 : 36, charge: isMobile() ? -30 : -46, label: 'close-up' };
     }
 
     function setLevel(value) {
@@ -632,7 +653,10 @@
       const normalizedSearch = normalizeRef(state.search.trim());
       const verseMode = state.level === 'verse';
       const usingSearch = Boolean(normalizedSearch);
-      const effectiveMinWeight = usingSearch ? state.minWeight : Math.max(state.minWeight, recommendedMinWeight(state.level));
+      const verseZoom = verseMode ? getVerseZoomConfig() : null;
+      const effectiveMinWeight = usingSearch
+        ? state.minWeight
+        : Math.max(state.minWeight, recommendedMinWeight(state.level) + (verseZoom ? verseZoom.extraWeight : 0));
 
       let links = dataset.links.filter(link => {
         if (link.weight < effectiveMinWeight) return false;
@@ -641,7 +665,7 @@
       });
 
       if (verseMode && !usingSearch) {
-        const cap = isMobile() ? 500 : 900;
+        const cap = verseZoom.cap;
         links = links.slice(0, cap);
       }
 
@@ -657,27 +681,27 @@
       Graph.graphData({ nodes, links });
       Graph.nodeColor(node => node.id === state.selectedNodeId ? '#22c55e' : (COLORS[node.testament] || '#aaa'));
       Graph.nodeVal(node => {
-        if (verseMode) return Math.max(isMobile() ? 2.8 : 3.4, Math.pow(node.weight, 0.35) / (isMobile() ? 2.5 : 2.0));
+        if (verseMode) return Math.max(isMobile() ? 2.8 : 3.4, (Math.pow(node.weight, 0.35) / (isMobile() ? 2.5 : 2.0)) * verseZoom.nodeScale);
         return Math.max(2, Math.pow(node.weight, 0.35) / (isMobile() ? 3.6 : 2.8));
       });
       Graph.linkWidth(link => {
-        if (verseMode) return 0.08 + Math.log10(link.weight + 1) * (isMobile() ? 0.18 : 0.24);
+        if (verseMode) return 0.05 + Math.log10(link.weight + 1) * verseZoom.linkWidthScale;
         return 0.25 + Math.log10(link.weight + 1) * (isMobile() ? 0.65 : 0.9);
       });
-      Graph.linkOpacity(verseMode ? (isMobile() ? 0.045 : 0.06) : (isMobile() ? 0.18 : 0.25));
+      Graph.linkOpacity(verseMode ? verseZoom.linkOpacity : (isMobile() ? 0.18 : 0.25));
       Graph.linkDirectionalParticles(link => (!verseMode && !isMobile() && link.weight > 200) ? 2 : 0);
       Graph.d3Force('charge').strength(
-        verseMode ? (isMobile() ? -34 : -52) : state.level === 'chapter' ? (isMobile() ? -60 : -80) : (isMobile() ? -60 : -80)
+        verseMode ? verseZoom.charge : state.level === 'chapter' ? (isMobile() ? -60 : -80) : (isMobile() ? -60 : -80)
       );
       Graph.d3Force('link').distance(() => {
-        if (verseMode) return isMobile() ? 34 : 42;
+        if (verseMode) return verseZoom.distance;
         return state.level === 'book' ? (isMobile() ? 110 : 140) : (isMobile() ? 60 : 80);
       });
 
       const note = search
         ? `Filtered by “${search}”.`
         : verseMode
-          ? `Verse view is auto-simplified: showing the strongest ${links.length.toLocaleString()} links${usingSearch ? '' : ' so nodes stay visible'}. Search for a verse/book to refine further.`
+          ? `Verse view is zoom-aware: ${verseZoom.label === 'overview' ? 'zoom in to reveal more links' : verseZoom.label === 'mid-zoom' ? 'you are seeing medium-detail link density' : 'close-up mode is showing deeper verse detail'}. Showing ${links.length.toLocaleString()} strongest links at this zoom level.`
           : isMobile()
             ? 'Tap nodes for focus. Use Controls for filters.'
             : 'Hover a node or link for details.';
@@ -700,6 +724,8 @@
     document.getElementById('search').addEventListener('focus', () => state.search.trim() && updateSearchResults());
     document.getElementById('searchMobile').addEventListener('focus', () => state.search.trim() && updateSearchResults());
     document.getElementById('menuButton').addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
+    viz.addEventListener('wheel', () => { if (state.level === 'verse') setTimeout(render, 80); }, { passive: true });
+    viz.addEventListener('touchend', () => { if (state.level === 'verse') setTimeout(render, 120); }, { passive: true });
 
     [searchResults, searchResultsMobile].forEach(panel => {
       panel.addEventListener('click', (e) => {
