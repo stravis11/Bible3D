@@ -51,6 +51,7 @@
     .muted { color: var(--muted); }
     .row { display: grid; gap: 8px; margin-bottom: 12px; }
     .chips { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+    .search-wrap { position: relative; }
     .chip { padding: 6px 10px; border-radius: 999px; border: 1px solid var(--border); background: rgba(255,255,255,0.04); }
     .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
     .control, button {
@@ -87,6 +88,40 @@
     }
     #info h3 { margin: 0 0 8px; font-size: 1rem; }
     #info p { margin: 6px 0; }
+
+    .search-results {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      z-index: 8;
+      max-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--panel-strong);
+      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+    }
+    .search-results[hidden] { display: none; }
+    .search-result {
+      width: 100%;
+      text-align: left;
+      border: 0;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+      border-radius: 0;
+      background: transparent;
+      padding: 12px 14px;
+      min-height: auto;
+    }
+    .search-result:last-child { border-bottom: 0; }
+    .search-result-title { font-weight: 600; color: var(--text); }
+    .search-result-meta { font-size: 0.8rem; color: var(--muted); margin-top: 3px; }
+    mark.search-hit {
+      background: rgba(34, 197, 94, 0.18);
+      color: #dcfce7;
+      padding: 0 2px;
+      border-radius: 4px;
+    }
 
     a { color: #93c5fd; }
     .small { font-size: 0.82rem; }
@@ -214,8 +249,11 @@
         </div>
 
         <div class="row">
-          <label for="search">Focus on a book/ref</label>
-          <input id="search" class="control" type="text" placeholder="e.g. Matthew, Rom.8, Isa.53" />
+          <label for="search">Search scriptures</label>
+          <div class="search-wrap">
+            <input id="search" class="control" type="text" placeholder="e.g. Matthew, Rom.8, Isa.53, John 1:1" autocomplete="off" />
+            <div id="searchResults" class="search-results" hidden></div>
+          </div>
         </div>
 
         <div class="row">
@@ -253,8 +291,11 @@
           </div>
 
           <div class="row">
-            <label for="searchMobile">Focus on a book/ref</label>
-            <input id="searchMobile" class="control" type="text" placeholder="e.g. Matthew, Rom.8, Isa.53" />
+            <label for="searchMobile">Search scriptures</label>
+            <div class="search-wrap">
+              <input id="searchMobile" class="control" type="text" placeholder="e.g. Matthew, Rom.8, Isa.53, John 1:1" autocomplete="off" />
+              <div id="searchResultsMobile" class="search-results" hidden></div>
+            </div>
           </div>
 
           <div class="row">
@@ -295,9 +336,11 @@
   <script src="https://unpkg.com/3d-force-graph"></script>
   <script>
     const COLORS = { OT: '#f59e0b', NT: '#38bdf8' };
-    const state = { raw: {}, level: 'book', minWeight: 25, search: '' };
+    const state = { raw: {}, level: 'book', minWeight: 25, search: '', selectedNodeId: null, searchIndex: [] };
     const info = document.getElementById('info');
     const viz = document.getElementById('viz');
+    const searchResults = document.getElementById('searchResults');
+    const searchResultsMobile = document.getElementById('searchResultsMobile');
     const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
 
     const Graph = ForceGraph3D()(viz)
@@ -305,7 +348,7 @@
       .nodeLabel(node => `${node.label}\n${node.testament} • total weight ${node.weight.toLocaleString()}`)
       .linkLabel(link => `${link.source.label || link.source} → ${link.target.label || link.target}\nWeight ${link.weight.toLocaleString()}`)
       .nodeAutoColorBy('testament')
-      .nodeColor(node => COLORS[node.testament] || '#aaa')
+      .nodeColor(node => node.id === state.selectedNodeId ? '#22c55e' : (COLORS[node.testament] || '#aaa'))
       .nodeVal(node => Math.max(2, Math.pow(node.weight, 0.35) / (isMobile() ? 3.6 : 2.8)))
       .linkWidth(link => 0.25 + Math.log10(link.weight + 1) * (isMobile() ? 0.65 : 0.9))
       .linkOpacity(isMobile() ? 0.18 : 0.25)
@@ -346,9 +389,40 @@
         fetch('./data/verse.json').then(r => r.json())
       ]);
       state.raw = { book, chapter, verse };
+      buildSearchIndex();
       syncControls();
       resizeGraph();
       render();
+    }
+
+    function normalizeRef(value) {
+      return value.toLowerCase()
+        .replace(/:/g, '.')
+        .replace(/\s+/g, '')
+        .replace(/verse|chapter|book/g, '');
+    }
+
+    function buildSearchIndex() {
+      const entries = [];
+      for (const level of ['book', 'chapter', 'verse']) {
+        for (const node of state.raw[level].nodes) {
+          const pretty = node.id.replace(/\./g, ':').replace(/:(\d+):(\d+)$/, ' $1:$2').replace(/:(\d+)$/, ' $1');
+          entries.push({
+            id: node.id,
+            level,
+            label: node.label,
+            pretty,
+            testament: node.testament,
+            book: node.book,
+            chapter: node.chapter,
+            verse: node.verse,
+            weight: node.weight,
+            group: node.group,
+            searchText: [node.id, node.label, pretty, node.book, node.group].join(' ').toLowerCase().replace(/:/g, '.')
+          });
+        }
+      }
+      state.searchIndex = entries;
     }
 
     function syncControls() {
@@ -392,23 +466,106 @@
       state.search = value;
       document.getElementById('search').value = value;
       document.getElementById('searchMobile').value = value;
+      updateSearchResults();
       render();
+    }
+
+    function scoreSearch(entry, query) {
+      const q = normalizeRef(query);
+      const exactId = normalizeRef(entry.id) === q ? 1000 : 0;
+      const startsId = normalizeRef(entry.id).startsWith(q) ? 250 : 0;
+      const startsLabel = entry.label.toLowerCase().startsWith(query.toLowerCase()) ? 180 : 0;
+      const includes = entry.searchText.includes(q) ? 80 : 0;
+      const levelBoost = entry.level === 'verse' ? 18 : entry.level === 'chapter' ? 12 : 6;
+      return exactId + startsId + startsLabel + includes + levelBoost + Math.log10(entry.weight + 1);
+    }
+
+    function highlight(text, query) {
+      const q = query.trim();
+      if (!q) return text;
+      const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return text.replace(new RegExp(`(${escaped})`, 'ig'), '<mark class="search-hit">$1</mark>');
+    }
+
+    function updateSearchResults() {
+      const query = state.search.trim();
+      const panels = [searchResults, searchResultsMobile];
+      if (!query) {
+        panels.forEach(panel => { panel.hidden = true; panel.innerHTML = ''; });
+        return;
+      }
+      const normalized = normalizeRef(query);
+      const results = state.searchIndex
+        .filter(entry => entry.searchText.replace(/\s+/g, '').includes(normalized) || normalizeRef(entry.id).includes(normalized))
+        .sort((a, b) => scoreSearch(b, query) - scoreSearch(a, query))
+        .slice(0, 8);
+
+      const html = results.length ? results.map(entry => `
+        <button class="search-result" data-id="${entry.id}" data-level="${entry.level}">
+          <div class="search-result-title">${highlight(entry.label, query)}</div>
+          <div class="search-result-meta">${entry.level} • ${entry.testament} • ${entry.group}</div>
+        </button>`).join('') : '<div class="search-result"><div class="search-result-title">No matches</div><div class="search-result-meta">Try a book, chapter, or verse like John, Rom.8, or Isa.53.</div></div>';
+
+      panels.forEach(panel => {
+        panel.innerHTML = html;
+        panel.hidden = false;
+      });
+    }
+
+    function focusNode(nodeId, level) {
+      if (!nodeId) return;
+      if (level && state.level !== level) {
+        state.level = level;
+        document.getElementById('level').value = level;
+        document.getElementById('levelMobile').value = level;
+      }
+      state.selectedNodeId = nodeId;
+      const query = nodeId;
+      document.getElementById('search').value = query;
+      document.getElementById('searchMobile').value = query;
+      state.search = query;
+      updateSearchResults();
+      searchResults.hidden = true;
+      searchResultsMobile.hidden = true;
+      render();
+
+      setTimeout(() => {
+        const graphData = Graph.graphData();
+        const node = graphData.nodes.find(n => n.id === nodeId);
+        if (!node) return;
+        const distance = isMobile() ? 180 : 140;
+        const distRatio = 1 + distance / Math.hypot(node.x || 1, node.y || 1, node.z || 1);
+        Graph.cameraPosition(
+          { x: (node.x || 1) * distRatio, y: (node.y || 1) * distRatio, z: (node.z || 1) * distRatio },
+          node,
+          1200
+        );
+        info.innerHTML = `<h3>${node.label}</h3>
+          <p><b>Testament:</b> ${node.testament}</p>
+          <p><b>Group:</b> ${node.group}</p>
+          <p><b>Total connection weight:</b> ${node.weight.toLocaleString()}</p>
+          <p class="muted">Focused from search.</p>`;
+      }, 150);
+
+      if (isMobile()) document.body.classList.remove('sidebar-open');
     }
 
     function render() {
       const dataset = state.raw[state.level];
       if (!dataset) return;
       const search = state.search.trim().toLowerCase();
+      const normalizedSearch = normalizeRef(state.search.trim());
       const links = dataset.links.filter(link => {
         if (link.weight < state.minWeight) return false;
-        if (!search) return true;
-        return link.source.toLowerCase().includes(search) || link.target.toLowerCase().includes(search);
+        if (!normalizedSearch) return true;
+        return normalizeRef(link.source).includes(normalizedSearch) || normalizeRef(link.target).includes(normalizedSearch);
       });
       const nodeIds = new Set();
       links.forEach(l => { nodeIds.add(l.source); nodeIds.add(l.target); });
       const nodes = dataset.nodes.filter(node => nodeIds.has(node.id));
 
       Graph.graphData({ nodes, links });
+      Graph.nodeColor(node => node.id === state.selectedNodeId ? '#22c55e' : (COLORS[node.testament] || '#aaa'));
       Graph.nodeVal(node => Math.max(2, Math.pow(node.weight, 0.35) / (isMobile() ? 3.6 : 2.8)));
       Graph.linkWidth(link => 0.25 + Math.log10(link.weight + 1) * (isMobile() ? 0.65 : 0.9));
       Graph.linkOpacity(isMobile() ? 0.18 : 0.25);
@@ -427,11 +584,29 @@
     document.getElementById('levelMobile').addEventListener('change', e => setLevel(e.target.value));
     document.getElementById('minWeight').addEventListener('input', e => setMinWeight(e.target.value));
     document.getElementById('minWeightMobile').addEventListener('input', e => setMinWeight(e.target.value));
-    document.getElementById('search').addEventListener('input', e => setSearch(e.target.value));
-    document.getElementById('searchMobile').addEventListener('input', e => setSearch(e.target.value));
+    document.getElementById('search').addEventListener('input', e => { state.selectedNodeId = null; setSearch(e.target.value); });
+    document.getElementById('searchMobile').addEventListener('input', e => { state.selectedNodeId = null; setSearch(e.target.value); });
     document.getElementById('resetCamera').addEventListener('click', () => Graph.cameraPosition({ x: 0, y: 0, z: isMobile() ? 520 : 450 }, { x: 0, y: 0, z: 0 }, 1000));
     document.getElementById('resetCameraMobile').addEventListener('click', () => Graph.cameraPosition({ x: 0, y: 0, z: isMobile() ? 520 : 450 }, { x: 0, y: 0, z: 0 }, 1000));
+    document.getElementById('search').addEventListener('focus', () => state.search.trim() && updateSearchResults());
+    document.getElementById('searchMobile').addEventListener('focus', () => state.search.trim() && updateSearchResults());
     document.getElementById('menuButton').addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
+
+    [searchResults, searchResultsMobile].forEach(panel => {
+      panel.addEventListener('click', (e) => {
+        const button = e.target.closest('[data-id]');
+        if (!button) return;
+        focusNode(button.dataset.id, button.dataset.level);
+      });
+    });
+
+    document.addEventListener('click', (e) => {
+      const inSearch = e.target.closest('.search-wrap');
+      if (!inSearch) {
+        searchResults.hidden = true;
+        searchResultsMobile.hidden = true;
+      }
+    });
 
     window.addEventListener('resize', () => {
       resizeGraph();
