@@ -2,6 +2,10 @@
 
 Interactive 3D visualization of New Testament scriptures connected to Old Testament scriptures.
 
+Live: <https://stravis11.github.io/Bible3D/>
+
+Click any book, chapter or verse to see what it connects to (with KJV text for verses), then click a connection to follow it.
+
 ## Data source
 
 - OpenBible cross references: https://www.openbible.info/labs/cross-references/
@@ -10,13 +14,14 @@ Interactive 3D visualization of New Testament scriptures connected to Old Testam
 ## Files
 
 - `docs/index.html` — browser app
+- `docs/vendor/` — pinned copy of [3d-force-graph](https://github.com/vasturiano/3d-force-graph) 1.80.1 (MIT), so a CDN update can't break the page
 - `docs/data/*.json` — generated graph data for book/chapter/verse views
 - `generate_map_data.py` — regeneration script from `data/cross_references.txt`
 
 ## Run locally
 
 ```bash
-cd nt-ot-map/docs
+cd docs
 python3 -m http.server 8765
 ```
 
@@ -27,6 +32,5 @@ Then open:
 ## Regenerate data
 
 ```bash
-cd nt-ot-map
 python3 generate_map_data.py
 ```

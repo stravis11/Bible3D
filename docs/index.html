@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>NT → OT Scripture Connections</title>
+  <link rel="icon" href="data:,">
   <style>
     :root {
       --bg: #0b1020;
@@ -74,9 +75,9 @@
       position: absolute;
       right: 16px;
       top: 16px;
-      width: 320px;
+      width: 340px;
       max-width: calc(100% - 32px);
-      max-height: min(45vh, 380px);
+      max-height: calc(100% - 32px);
       overflow: auto;
       padding: 14px;
       border-radius: 14px;
@@ -88,6 +89,26 @@
     }
     #info h3 { margin: 0 0 8px; font-size: 1rem; }
     #info p { margin: 6px 0; }
+    #status p { margin: 3px 0; }
+    #details:not(:empty) { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+    #details h4 { margin: 14px 0 6px; font-size: 0.78rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .verse-text { font-family: Georgia, 'Times New Roman', serif; font-size: 0.98rem; line-height: 1.5; color: #f8fafc; }
+    .conns { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+    .conns li { font-size: inherit; }
+    .conn { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; min-height: 38px; padding: 8px 10px; border-radius: 10px; text-align: left; }
+    .conn-w { color: var(--muted); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+    #info .conns .verse-text { margin: 4px 10px 8px; font-size: 0.88rem; color: #cbd5e1; }
+    .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .detail-actions button { width: auto; min-height: 38px; padding: 8px 12px; }
+
+    #labels { position: absolute; inset: 0; z-index: 1; overflow: hidden; pointer-events: none; }
+    .node-label {
+      position: absolute; left: 0; top: 0;
+      font-size: 11px; font-weight: 600; white-space: nowrap; color: #e5e7eb;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.95), 0 0 2px rgba(0,0,0,0.95);
+      will-change: transform;
+    }
+    .node-label.is-selected { color: #86efac; font-size: 13px; }
 
     .search-results {
       position: absolute;
@@ -211,7 +232,7 @@
         bottom: calc(var(--safe-bottom) + 12px);
         width: auto;
         max-width: none;
-        max-height: 28dvh;
+        max-height: 40dvh;
         border-radius: 16px;
         background: rgba(15, 23, 42, 0.9);
       }
@@ -263,8 +284,8 @@
         <h2>How to use it</h2>
         <ul class="muted">
           <li>Drag to orbit, scroll to zoom.</li>
-          <li>Click a node to center it.</li>
-          <li>Hover a node or link to inspect details.</li>
+          <li>Hover a node or link for its name.</li>
+          <li>Click a node to see what it connects to, then click a connection to follow it.</li>
           <li>Use <b>book</b> view first. Verse view is dense by design.</li>
         </ul>
 
@@ -309,7 +330,7 @@
         <div class="details-body">
           <ul class="muted">
             <li>Drag to orbit, pinch/zoom as your browser allows.</li>
-            <li>Tap a node to center it.</li>
+            <li>Tap a node to see what it connects to, then tap a connection to follow it.</li>
             <li>Use <b>book</b> view first; verse view is intentionally dense.</li>
           </ul>
           <p class="muted small">This uses weighted cross references from OpenBible's public dataset, primarily sourced from the Treasury of Scripture Knowledge. It maps <i>connections</i>, not only formal quotations.</p>
@@ -325,17 +346,22 @@
       </div>
 
       <div id="viz"></div>
-      <div id="info">
-        <h3>Interactive scripture graph</h3>
-        <p class="muted">Loading data…</p>
+      <div id="labels" aria-hidden="true"></div>
+      <div id="info" aria-live="polite">
+        <div id="status">
+          <h3>Interactive scripture graph</h3>
+          <p class="muted">Loading data…</p>
+        </div>
+        <div id="details"></div>
       </div>
     </main>
   </div>
 
-  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
-  <script src="https://unpkg.com/3d-force-graph"></script>
+  <script src="./vendor/3d-force-graph.min.js"></script>
   <script>
     const COLORS = { OT: '#f59e0b', NT: '#38bdf8' };
+    const SELECTED_COLOR = '#22c55e';
+    const TESTAMENTS = { OT: 'Old Testament', NT: 'New Testament' };
     const BOOK_NAMES = {
       Gen: 'Genesis', Exod: 'Exodus', Lev: 'Leviticus', Num: 'Numbers', Deut: 'Deuteronomy', Josh: 'Joshua', Judg: 'Judges', Ruth: 'Ruth',
       '1Sam': '1 Samuel', '2Sam': '2 Samuel', '1Kgs': '1 Kings', '2Kgs': '2 Kings', '1Chr': '1 Chronicles', '2Chr': '2 Chronicles', Ezra: 'Ezra', Neh: 'Nehemiah', Esth: 'Esther',
@@ -345,72 +371,57 @@
       '1Thess': '1 Thessalonians', '2Thess': '2 Thessalonians', '1Tim': '1 Timothy', '2Tim': '2 Timothy', Titus: 'Titus', Phlm: 'Philemon', Heb: 'Hebrews', Jas: 'James', '1Pet': '1 Peter', '2Pet': '2 Peter',
       '1John': '1 John', '2John': '2 John', '3John': '3 John', Jude: 'Jude', Rev: 'Revelation'
     };
-    const state = { raw: {}, level: 'book', minWeight: 25, search: '', selectedNodeId: null, searchIndex: [], verseCache: {}, userAdjustedMinWeight: false, cameraDistance: null };
-    const info = document.getElementById('info');
+    const BOOK_ORDER = Object.keys(BOOK_NAMES);
+    // Abbreviations and full names (lowercase, no spaces) → dataset book id.
+    const BOOK_LOOKUP = new Map([['psalm', 'Ps'], ['songofsongs', 'Song']]);
+    for (const abbr of BOOK_ORDER) {
+      BOOK_LOOKUP.set(abbr.toLowerCase(), abbr);
+      BOOK_LOOKUP.set(BOOK_NAMES[abbr].toLowerCase().replace(/\s+/g, ''), abbr);
+    }
+    const LEVEL_DEPTH = { book: 1, chapter: 2, verse: 3 };
+    const FOCUS_LIMIT = 60;
+    const FOCUS_DISTANCE = { book: 460, chapter: 300, verse: 190 };
+    const CONNECTIONS_SHOWN = 12;
+    const VERSE_TEXTS_SHOWN = 3;
+
+    const state = {
+      raw: {}, nodeIndex: {}, adjacency: {}, level: 'book', minWeight: 25, search: '',
+      selectedNodeId: null, focusId: null, pinnedNode: null, zoomBand: null, shownNodes: [],
+      searchIndex: [], verseCache: {}, userAdjustedMinWeight: false, detailsToken: 0, wasMobile: null
+    };
+    const statusEl = document.getElementById('status');
+    const details = document.getElementById('details');
+    const labelLayer = document.getElementById('labels');
     const viz = document.getElementById('viz');
     const searchResults = document.getElementById('searchResults');
     const searchResultsMobile = document.getElementById('searchResultsMobile');
     const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
+    const idOf = end => (typeof end === 'object' ? end.id : end);
+    const escapeHtml = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const nodeColor = node => node.id === state.selectedNodeId ? SELECTED_COLOR : (COLORS[node.testament] || '#aaa');
 
     const Graph = ForceGraph3D()(viz)
       .backgroundColor('rgba(0,0,0,0)')
-      .nodeLabel(node => `${node.label}\n${node.testament} • total weight ${node.weight.toLocaleString()}`)
-      .linkLabel(link => `${link.source.label || link.source} → ${link.target.label || link.target}\nWeight ${link.weight.toLocaleString()}`)
-      .nodeAutoColorBy('testament')
-      .nodeColor(node => node.id === state.selectedNodeId ? '#22c55e' : (COLORS[node.testament] || '#aaa'))
-      .nodeVal(node => Math.max(2, Math.pow(node.weight, 0.35) / (isMobile() ? 3.6 : 2.8)))
-      .linkWidth(link => 0.25 + Math.log10(link.weight + 1) * (isMobile() ? 0.65 : 0.9))
-      .linkOpacity(isMobile() ? 0.18 : 0.25)
-      .linkDirectionalParticles(link => !isMobile() && link.weight > 200 ? 2 : 0)
+      .nodeLabel(node => `<b>${humanRef(node)}</b><br>${TESTAMENTS[node.testament]} · ${node.group}`)
+      .linkLabel(link => `${humanRef(idOf(link.source))} → ${humanRef(idOf(link.target))}<br>Weight ${link.weight.toLocaleString()}`)
+      .nodeColor(nodeColor)
       .linkDirectionalParticleWidth(2)
       .linkDirectionalParticleColor(() => '#a7f3d0')
-      .onNodeHover(node => {
-        if (!node) return;
-        info.innerHTML = `<h3>${humanRef(node)}</h3>
-          <p><b>Testament:</b> ${node.testament}</p>
-          <p><b>Group:</b> ${node.group}</p>
-          <p><b>Total connection weight:</b> ${node.weight.toLocaleString()}</p>
-          ${node.kind === 'verse' ? '<p class="muted">Tap/click to load the verse text.</p>' : ''}
-          <p class="muted">${isMobile() ? 'Tap to center this node.' : 'Click to center this node.'}</p>`;
-      })
-      .onLinkHover(link => {
-        if (!link) return;
-        const source = link.source.label || link.source.id || link.source;
-        const target = link.target.label || link.target.id || link.target;
-        info.innerHTML = `<h3>${source} → ${target}</h3>
-          <p><b>Weight:</b> ${link.weight.toLocaleString()}</p>
-          <p class="muted">Higher weight = stronger cross-reference signal in the source dataset.</p>`;
-      })
-      .onEngineStop(() => {
-        const pos = Graph.cameraPosition();
-        state.cameraDistance = Math.hypot(pos.x || 0, pos.y || 0, pos.z || 0);
-      })
-      .onNodeClick(async node => {
-        state.selectedNodeId = node.id;
-        const distance = isMobile() ? 180 : 140;
-        const distRatio = 1 + distance / Math.hypot(node.x || 1, node.y || 1, node.z || 1);
-        Graph.cameraPosition(
-          { x: (node.x || 1) * distRatio, y: (node.y || 1) * distRatio, z: (node.z || 1) * distRatio },
-          node,
-          1200
-        );
-        Graph.nodeColor(n => n.id === state.selectedNodeId ? '#22c55e' : (COLORS[n.testament] || '#aaa'));
-        info.innerHTML = `<h3>${humanRef(node)}</h3>
-          <p><b>Testament:</b> ${node.testament}</p>
-          <p><b>Group:</b> ${node.group}</p>
-          <p><b>Total connection weight:</b> ${node.weight.toLocaleString()}</p>
-          ${node.kind === 'verse' ? '<p class="muted">Loading verse text…</p>' : ''}`;
-        if (node.kind === 'verse') {
-          const verseData = await fetchVerseText(node);
-          info.innerHTML = `<h3>${verseData.reference}</h3>
-            <p><b>Testament:</b> ${node.testament}</p>
-            <p><b>Group:</b> ${node.group}</p>
-            <p><b>Total connection weight:</b> ${node.weight.toLocaleString()}</p>
-            <p><b>Verse:</b> ${verseData.text}</p>
-            <p class="muted small">Source text: ${verseData.translation}</p>`;
-        }
-        if (isMobile()) document.body.classList.remove('sidebar-open');
-      });
+      .onNodeHover(node => { viz.style.cursor = node ? 'pointer' : ''; })
+      .onNodeClick(node => selectNode(node));
+
+    // Verse view shows more links as you zoom in. Re-render only when the zoom band changes,
+    // not on every wheel tick, so the layout isn't restarted while you scroll. This is a
+    // throttle, not a debounce: the controls keep emitting 'change' while the zoom eases out.
+    let zoomCheckPending = false;
+    Graph.controls().addEventListener('change', () => {
+      if (zoomCheckPending || state.level !== 'verse' || state.focusId || state.search.trim()) return;
+      zoomCheckPending = true;
+      setTimeout(() => {
+        zoomCheckPending = false;
+        if (state.level === 'verse' && !state.focusId && !state.search.trim() && zoomBandFor(cameraDistance()) !== state.zoomBand) render();
+      }, 300);
+    });
 
     async function loadAll() {
       const [book, chapter, verse] = await Promise.all([
@@ -419,10 +430,14 @@
         fetch('./data/verse.json').then(r => r.json())
       ]);
       state.raw = { book, chapter, verse };
+      for (const level of Object.keys(state.raw)) {
+        state.nodeIndex[level] = new Map(state.raw[level].nodes.map(node => [node.id, node]));
+      }
       buildSearchIndex();
       syncControls();
       resizeGraph();
       render();
+      requestAnimationFrame(updateLabels);
     }
 
     function normalizeRef(value) {
@@ -430,6 +445,33 @@
         .replace(/:/g, '.')
         .replace(/\s+/g, '')
         .replace(/verse|chapter|book/g, '');
+    }
+
+    function resolveBook(token) {
+      if (BOOK_LOOKUP.has(token)) return BOOK_LOOKUP.get(token);
+      if (token.length < 2) return null;
+      return BOOK_ORDER.find(abbr =>
+        abbr.toLowerCase().startsWith(token) || BOOK_NAMES[abbr].toLowerCase().replace(/\s+/g, '').startsWith(token)
+      ) || null;
+    }
+
+    // "Isaiah 53", "isa.53", "1 John 1:1", "rom8" → dataset ids like "Isa.53" or "1John.1.1".
+    function parseRef(query) {
+      const q = query.toLowerCase().replace(/\s+/g, '').replace(/:/g, '.');
+      const m = q.match(/^([1-3]?[a-z]+)\.?(\d+)?(?:\.(\d+))?$/);
+      if (!m) return null;
+      const book = resolveBook(m[1]);
+      return book ? [book, m[2], m[3]].filter(Boolean).join('.') : null;
+    }
+
+    function matcherFor(query, level) {
+      const canonical = parseRef(query);
+      if (canonical) {
+        const prefix = canonical.split('.').slice(0, LEVEL_DEPTH[level]).join('.');
+        return id => id === prefix || id.startsWith(prefix + '.');
+      }
+      const q = normalizeRef(query);
+      return id => normalizeRef(id).includes(q);
     }
 
     function humanRef(nodeOrId) {
@@ -441,21 +483,19 @@
       return bookName;
     }
 
-    async function fetchVerseText(node) {
-      if (!node || node.kind !== 'verse' || !node.chapter || !node.verse) return null;
-      if (state.verseCache[node.id]) return state.verseCache[node.id];
-      const ref = encodeURIComponent(humanRef(node));
+    async function fetchVerseText(id) {
+      if (state.verseCache[id]) return state.verseCache[id];
       try {
-        const res = await fetch(`https://bible-api.com/${ref}?translation=kjv`);
+        const res = await fetch(`https://bible-api.com/${encodeURIComponent(humanRef(id))}?translation=kjv`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const text = (data.text || '').replace(/\s+/g, ' ').trim();
         if (!text) throw new Error('No verse text');
-        state.verseCache[node.id] = { reference: data.reference || humanRef(node), text, translation: (data.translation_name || 'KJV') };
-        return state.verseCache[node.id];
+        state.verseCache[id] = { text };
+        return state.verseCache[id];
       } catch (err) {
-        state.verseCache[node.id] = { reference: humanRef(node), text: 'Verse text unavailable right now.', translation: 'Unavailable' };
-        return state.verseCache[node.id];
+        // Not cached, so a rate-limited request can succeed next time.
+        return null;
       }
     }
 
@@ -470,9 +510,6 @@
             label: node.label,
             pretty,
             testament: node.testament,
-            book: node.book,
-            chapter: node.chapter,
-            verse: node.verse,
             weight: node.weight,
             group: node.group,
             searchText: [node.id, node.label, pretty, node.book, node.group].join(' ').toLowerCase().replace(/:/g, '.')
@@ -480,6 +517,24 @@
         }
       }
       state.searchIndex = entries;
+    }
+
+    // Links touching a node across the whole level, strongest first (the data is pre-sorted).
+    function connectionsOf(id, level) {
+      if (!state.adjacency[level]) {
+        const adjacency = new Map();
+        const add = (from, to, weight) => {
+          if (!adjacency.has(from)) adjacency.set(from, []);
+          adjacency.get(from).push({ id: to, weight });
+        };
+        for (const link of state.raw[level].links) {
+          if (link.weight <= 0) continue;
+          add(link.source, link.target, link.weight);
+          add(link.target, link.source, link.weight);
+        }
+        state.adjacency[level] = adjacency;
+      }
+      return state.adjacency[level].get(id) || [];
     }
 
     function syncControls() {
@@ -497,6 +552,16 @@
       document.getElementById('minWeightValueMobile').textContent = state.minWeight;
     }
 
+    function setControlValues({ level, minWeight, search }) {
+      for (const [id, value] of [['level', level], ['levelMobile', level], ['minWeight', minWeight], ['minWeightMobile', minWeight], ['search', search], ['searchMobile', search]]) {
+        if (value !== undefined) document.getElementById(id).value = value;
+      }
+      if (minWeight !== undefined) {
+        document.getElementById('minWeightValue').textContent = minWeight;
+        document.getElementById('minWeightValueMobile').textContent = minWeight;
+      }
+    }
+
     function resizeGraph() {
       const width = viz.clientWidth || window.innerWidth;
       const height = viz.clientHeight || window.innerHeight;
@@ -509,63 +574,68 @@
       return 25;
     }
 
-    function getCameraDistance() {
-      if (state.cameraDistance) return state.cameraDistance;
-      const pos = Graph.cameraPosition();
-      return Math.hypot(pos.x || 0, pos.y || 0, pos.z || 0) || (isMobile() ? 520 : 450);
+    function cameraDistance() {
+      const { x, y, z } = Graph.camera().position;
+      const target = Graph.controls().target || { x: 0, y: 0, z: 0 };
+      return Math.hypot(x - target.x, y - target.y, z - target.z);
     }
 
-    function getVerseZoomConfig() {
-      const distance = getCameraDistance();
-      if (distance > 430) {
-        return { cap: isMobile() ? 320 : 550, extraWeight: 65, nodeScale: 1.45, linkOpacity: isMobile() ? 0.03 : 0.04, linkWidthScale: 0.15, distance: isMobile() ? 42 : 52, charge: isMobile() ? -40 : -58, label: 'overview' };
-      }
-      if (distance > 260) {
-        return { cap: isMobile() ? 700 : 1200, extraWeight: 25, nodeScale: 1.25, linkOpacity: isMobile() ? 0.045 : 0.06, linkWidthScale: 0.2, distance: isMobile() ? 36 : 44, charge: isMobile() ? -36 : -54, label: 'mid-zoom' };
-      }
-      return { cap: isMobile() ? 1400 : 2400, extraWeight: 0, nodeScale: 1.1, linkOpacity: isMobile() ? 0.07 : 0.09, linkWidthScale: 0.28, distance: isMobile() ? 30 : 36, charge: isMobile() ? -30 : -46, label: 'close-up' };
+    function zoomBandFor(distance) {
+      if (distance > 430) return 'overview';
+      if (distance > 260) return 'mid-zoom';
+      return 'close-up';
+    }
+
+    function verseZoomConfig(band) {
+      const m = isMobile();
+      if (band === 'overview') return { cap: m ? 320 : 550, extraWeight: 65, nodeScale: 1.45, linkOpacity: m ? 0.03 : 0.04, linkWidthScale: 0.15, distance: m ? 42 : 52, charge: m ? -40 : -58 };
+      if (band === 'mid-zoom') return { cap: m ? 700 : 1200, extraWeight: 25, nodeScale: 1.25, linkOpacity: m ? 0.045 : 0.06, linkWidthScale: 0.2, distance: m ? 36 : 44, charge: m ? -36 : -54 };
+      return { cap: m ? 1400 : 2400, extraWeight: 0, nodeScale: 1.1, linkOpacity: m ? 0.07 : 0.09, linkWidthScale: 0.28, distance: m ? 30 : 36, charge: m ? -30 : -46 };
+    }
+
+    function defaultCameraPosition() {
+      return { x: 0, y: 0, z: isMobile() ? 520 : 450 };
     }
 
     function setLevel(value) {
       state.level = value;
+      state.focusId = null;
+      clearSelection();
       if (!state.userAdjustedMinWeight || state.minWeight < recommendedMinWeight(value)) {
         state.minWeight = recommendedMinWeight(value);
       }
-      document.getElementById('level').value = value;
-      document.getElementById('levelMobile').value = value;
-      document.getElementById('minWeight').value = state.minWeight;
-      document.getElementById('minWeightMobile').value = state.minWeight;
-      document.getElementById('minWeightValue').textContent = state.minWeight;
-      document.getElementById('minWeightValueMobile').textContent = state.minWeight;
+      setControlValues({ level: value, minWeight: state.minWeight });
       render();
     }
 
     function setMinWeight(value) {
       state.userAdjustedMinWeight = true;
       state.minWeight = Number(value);
-      document.getElementById('minWeight').value = state.minWeight;
-      document.getElementById('minWeightMobile').value = state.minWeight;
-      document.getElementById('minWeightValue').textContent = state.minWeight;
-      document.getElementById('minWeightValueMobile').textContent = state.minWeight;
+      state.focusId = null;
+      setControlValues({ minWeight: state.minWeight });
       render();
     }
 
+    let searchRenderTimer = 0;
     function setSearch(value) {
       state.search = value;
-      document.getElementById('search').value = value;
-      document.getElementById('searchMobile').value = value;
+      state.focusId = null;
+      clearSelection();
+      setControlValues({ search: value });
       updateSearchResults();
-      render();
+      clearTimeout(searchRenderTimer);
+      searchRenderTimer = setTimeout(render, 150);
     }
 
-    function scoreSearch(entry, query) {
+    function scoreSearch(entry, query, canonical) {
       const q = normalizeRef(query);
+      const exactCanonical = canonical && entry.id === canonical ? 2000 : 0;
       const exactId = normalizeRef(entry.id) === q ? 1000 : 0;
       const startsId = normalizeRef(entry.id).startsWith(q) ? 250 : 0;
-      const startsLabel = entry.label.toLowerCase().startsWith(query.toLowerCase()) ? 180 : 0;
+      const startsLabel = entry.pretty.toLowerCase().startsWith(query.toLowerCase()) ? 180 : 0;
       const includes = entry.searchText.includes(q) ? 80 : 0;
       const levelBoost = entry.level === 'verse' ? 18 : entry.level === 'chapter' ? 12 : 6;
-      return exactId + startsId + startsLabel + includes + levelBoost + Math.log10(entry.weight + 1);
+      return exactCanonical + exactId + startsId + startsLabel + includes + levelBoost + Math.log10(Math.max(entry.weight, 0) + 1);
     }
 
     function highlight(text, query) {
@@ -583,16 +653,20 @@
         return;
       }
       const normalized = normalizeRef(query);
+      const canonical = parseRef(query);
       const results = state.searchIndex
-        .filter(entry => entry.searchText.replace(/\s+/g, '').includes(normalized) || normalizeRef(entry.id).includes(normalized))
-        .sort((a, b) => scoreSearch(b, query) - scoreSearch(a, query))
+        .filter(entry =>
+          (canonical && (entry.id === canonical || entry.id.startsWith(canonical + '.')))
+          || entry.searchText.replace(/\s+/g, '').includes(normalized)
+          || normalizeRef(entry.id).includes(normalized))
+        .sort((a, b) => scoreSearch(b, query, canonical) - scoreSearch(a, query, canonical))
         .slice(0, 8);
 
       const html = results.length ? results.map(entry => `
-        <button class="search-result" data-id="${entry.id}" data-level="${entry.level}">
-          <div class="search-result-title">${highlight(entry.label, query)}</div>
-          <div class="search-result-meta">${entry.level} • ${entry.testament} • ${entry.group}</div>
-        </button>`).join('') : '<div class="search-result"><div class="search-result-title">No matches</div><div class="search-result-meta">Try a book, chapter, or verse like John, Rom.8, or Isa.53.</div></div>';
+        <button class="search-result" data-id="${escapeHtml(entry.id)}" data-level="${entry.level}">
+          <div class="search-result-title">${highlight(escapeHtml(entry.pretty), escapeHtml(query))}</div>
+          <div class="search-result-meta">${entry.level} • ${TESTAMENTS[entry.testament]} • ${escapeHtml(entry.group)}</div>
+        </button>`).join('') : '<div class="search-result"><div class="search-result-title">No matches</div><div class="search-result-meta">Try a book, chapter, or verse like John, Romans 8, or Isaiah 53:5.</div></div>';
 
       panels.forEach(panel => {
         panel.innerHTML = html;
@@ -600,132 +674,222 @@
       });
     }
 
-    function focusNode(nodeId, level) {
-      if (!nodeId) return;
-      if (level && state.level !== level) {
-        state.level = level;
-        document.getElementById('level').value = level;
-        document.getElementById('levelMobile').value = level;
-      }
-      state.selectedNodeId = nodeId;
-      const query = nodeId;
-      document.getElementById('search').value = query;
-      document.getElementById('searchMobile').value = query;
-      state.search = query;
-      updateSearchResults();
-      searchResults.hidden = true;
-      searchResultsMobile.hidden = true;
-      render();
+    function flyTo(node) {
+      const distance = isMobile() ? 180 : 140;
+      const x = node.x || 0, y = node.y || 0, z = node.z || 0;
+      const len = Math.hypot(x, y, z);
+      const ratio = 1 + distance / (len || 1);
+      const position = len < 1 ? { x: 0, y: 0, z: distance } : { x: x * ratio, y: y * ratio, z: z * ratio };
+      Graph.cameraPosition(position, { x, y, z }, 1200);
+    }
 
-      setTimeout(() => {
-        const graphData = Graph.graphData();
-        const node = graphData.nodes.find(n => n.id === nodeId);
-        if (!node) return;
-        const distance = isMobile() ? 180 : 140;
-        const distRatio = 1 + distance / Math.hypot(node.x || 1, node.y || 1, node.z || 1);
-        Graph.cameraPosition(
-          { x: (node.x || 1) * distRatio, y: (node.y || 1) * distRatio, z: (node.z || 1) * distRatio },
-          node,
-          1200
-        );
-        if (node.kind === 'verse') {
-          info.innerHTML = `<h3>${humanRef(node)}</h3>
-            <p><b>Testament:</b> ${node.testament}</p>
-            <p><b>Group:</b> ${node.group}</p>
-            <p><b>Total connection weight:</b> ${node.weight.toLocaleString()}</p>
-            <p class="muted">Focused from search. Tap/click again to load the verse text.</p>`;
-        } else {
-          info.innerHTML = `<h3>${humanRef(node)}</h3>
-            <p><b>Testament:</b> ${node.testament}</p>
-            <p><b>Group:</b> ${node.group}</p>
-            <p><b>Total connection weight:</b> ${node.weight.toLocaleString()}</p>
-            <p class="muted">Focused from search.</p>`;
-        }
-      }, 150);
-
+    function selectNode(node) {
+      state.selectedNodeId = node.id;
+      refreshSelection();
+      flyTo(node);
+      showDetails(node);
       if (isMobile()) document.body.classList.remove('sidebar-open');
     }
 
-    function render() {
+    function clearSelection() {
+      state.selectedNodeId = null;
+      state.detailsToken++;
+      details.replaceChildren();
+      refreshSelection();
+    }
+
+    // Show one node and its strongest connections at a level, with the node pinned at the centre.
+    function focusNode(nodeId, level = state.level) {
+      const node = state.nodeIndex[level] && state.nodeIndex[level].get(nodeId);
+      if (!node) return;
+      if (level !== state.level) {
+        state.level = level;
+        if (!state.userAdjustedMinWeight || state.minWeight < recommendedMinWeight(level)) state.minWeight = recommendedMinWeight(level);
+        setControlValues({ level, minWeight: state.minWeight });
+      }
+      clearTimeout(searchRenderTimer);
+      state.search = '';
+      setControlValues({ search: humanRef(node) });
+      searchResults.hidden = true;
+      searchResultsMobile.hidden = true;
+      state.focusId = nodeId;
+      state.selectedNodeId = nodeId;
+      render();
+      Graph.cameraPosition({ x: 0, y: 0, z: FOCUS_DISTANCE[level] * (isMobile() ? 1.25 : 1) }, { x: 0, y: 0, z: 0 }, 1000);
+      showDetails(node);
+      if (isMobile()) document.body.classList.remove('sidebar-open');
+    }
+
+    function unfocus() {
+      state.focusId = null;
+      setControlValues({ search: '' });
+      const position = defaultCameraPosition();
+      Graph.cameraPosition(position, { x: 0, y: 0, z: 0 }, 1000);
+      render({ distance: position.z });
+      const node = state.selectedNodeId && state.nodeIndex[state.level].get(state.selectedNodeId);
+      if (node) showDetails(node);
+    }
+
+    function showDetails(node) {
+      const token = ++state.detailsToken;
+      const isVerse = node.kind === 'verse';
+      const connections = connectionsOf(node.id, node.kind);
+      const shown = connections.slice(0, CONNECTIONS_SHOWN);
+      const heading = node.testament === 'NT' ? 'Draws on' : 'Echoed in';
+      details.innerHTML = `
+        <h3>${escapeHtml(humanRef(node))}</h3>
+        <p class="muted small">${TESTAMENTS[node.testament]} · ${escapeHtml(node.group)} · weight ${node.weight.toLocaleString()}</p>
+        ${isVerse ? `<p class="verse-text" data-ref="${escapeHtml(node.id)}">Loading verse…</p>` : ''}
+        <h4>${heading}${connections.length ? ` · ${connections.length.toLocaleString()}` : ''}</h4>
+        ${shown.length ? `<ol class="conns">${shown.map((c, i) => `
+          <li>
+            <button class="conn" data-id="${escapeHtml(c.id)}" data-level="${node.kind}">
+              <span>${escapeHtml(humanRef(c.id))}</span><span class="conn-w">${c.weight.toLocaleString()}</span>
+            </button>
+            ${isVerse && i < VERSE_TEXTS_SHOWN ? `<p class="verse-text" data-ref="${escapeHtml(c.id)}">…</p>` : ''}
+          </li>`).join('')}</ol>` : '<p class="muted">No positively weighted cross references at this level.</p>'}
+        ${connections.length > shown.length ? `<p class="muted small">Showing the ${shown.length} strongest.</p>` : ''}
+        ${isVerse ? '<p class="muted small">Verse text: KJV via bible-api.com</p>' : ''}
+        <div class="detail-actions">
+          ${state.focusId === node.id
+            ? '<button data-action="unfocus">Show full map</button>'
+            : '<button data-action="focus">Isolate its connections</button>'}
+          <button data-action="close">Close</button>
+        </div>`;
+      if (isVerse) fillVerseTexts(token);
+    }
+
+    async function fillVerseTexts(token) {
+      for (const el of details.querySelectorAll('.verse-text[data-ref]')) {
+        const verse = await fetchVerseText(el.dataset.ref);
+        if (token !== state.detailsToken) return;
+        el.textContent = verse ? verse.text : 'Verse text unavailable right now.';
+      }
+    }
+
+    function refreshSelection() {
+      Graph.nodeColor(nodeColor);
+      syncLabels();
+    }
+
+    // Labels are HTML overlaid on the canvas: every book in book view, the whole neighbourhood
+    // when a node is isolated, and otherwise just the selected node.
+    function syncLabels() {
+      const labelAll = state.level === 'book' || state.focusId;
+      const wanted = labelAll ? state.shownNodes : state.shownNodes.filter(node => node.id === state.selectedNodeId);
+      labelLayer.replaceChildren(...wanted.map(node => {
+        const el = document.createElement('span');
+        el.className = node.id === state.selectedNodeId ? 'node-label is-selected' : 'node-label';
+        el.textContent = humanRef(node);
+        el.node = node;
+        return el;
+      }));
+    }
+
+    function updateLabels() {
+      const view = Graph.camera().matrixWorldInverse.elements;
+      for (const el of labelLayer.children) {
+        const { x, y, z } = el.node;
+        // Depth in front of the camera; hide labels for nodes behind it.
+        const depth = x === undefined ? -1 : -(view[2] * x + view[6] * y + view[10] * z + view[14]);
+        if (depth <= 0) { el.style.opacity = '0'; continue; }
+        const screen = Graph.graph2ScreenCoords(x, y, z);
+        el.style.transform = `translate(${screen.x}px, ${screen.y}px) translate(-50%, calc(-100% - 8px))`;
+        el.style.opacity = Math.min(1, Math.max(0.35, 650 / depth)).toFixed(2);
+      }
+      requestAnimationFrame(updateLabels);
+    }
+
+    function pinFocus() {
+      if (state.pinnedNode && state.pinnedNode.id !== state.focusId) {
+        const node = state.pinnedNode;
+        node.fx = node.fy = node.fz = undefined;
+        state.pinnedNode = null;
+      }
+      if (state.focusId) {
+        const node = state.nodeIndex[state.level].get(state.focusId);
+        node.fx = node.fy = node.fz = 0;
+        state.pinnedNode = node;
+      }
+    }
+
+    function render({ distance } = {}) {
       const dataset = state.raw[state.level];
       if (!dataset) return;
-      const search = state.search.trim().toLowerCase();
-      const normalizedSearch = normalizeRef(state.search.trim());
-      const verseMode = state.level === 'verse';
-      const usingSearch = Boolean(normalizedSearch);
-      const verseZoom = verseMode ? getVerseZoomConfig() : null;
-      const effectiveMinWeight = usingSearch
-        ? state.minWeight
-        : Math.max(state.minWeight, recommendedMinWeight(state.level) + (verseZoom ? verseZoom.extraWeight : 0));
+      const level = state.level;
+      const verseMode = level === 'verse';
+      const query = state.search.trim();
+      const matches = query && !state.focusId ? matcherFor(query, level) : null;
+      // Zoom bands only thin out the unfiltered verse map; search and focus use close-up styling.
+      const band = verseMode && !state.focusId && !matches ? zoomBandFor(distance ?? cameraDistance()) : null;
+      const verseZoom = verseMode ? verseZoomConfig(band || 'close-up') : null;
+      state.zoomBand = band;
+      const effectiveMinWeight = state.minWeight + (band ? verseZoom.extraWeight : 0);
 
-      let links = dataset.links.filter(link => {
-        if (link.weight < effectiveMinWeight) return false;
-        if (!normalizedSearch) return true;
-        return normalizeRef(link.source).includes(normalizedSearch) || normalizeRef(link.target).includes(normalizedSearch);
-      });
-
-      if (verseMode && !usingSearch) {
-        const cap = verseZoom.cap;
-        links = links.slice(0, cap);
+      let picked;
+      if (state.focusId) {
+        picked = dataset.links
+          .filter(link => link.weight > 0 && (link.source === state.focusId || link.target === state.focusId))
+          .slice(0, FOCUS_LIMIT);
+      } else {
+        picked = dataset.links.filter(link =>
+          link.weight >= effectiveMinWeight && (!matches || matches(link.source) || matches(link.target)));
+        if (band) picked = picked.slice(0, verseZoom.cap);
       }
 
-      const nodeIds = new Set();
-      links.forEach(l => { nodeIds.add(l.source); nodeIds.add(l.target); });
-      let nodes = dataset.nodes.filter(node => nodeIds.has(node.id));
+      // The graph replaces link.source/target with node objects, so hand it copies and keep
+      // the raw data as plain ids for the next filter.
+      const links = picked.map(({ source, target, weight }) => ({ source, target, weight }));
+      const nodeIds = new Set(picked.flatMap(link => [link.source, link.target]));
+      if (state.focusId) nodeIds.add(state.focusId);
+      const nodes = dataset.nodes.filter(node => nodeIds.has(node.id));
+      pinFocus();
 
-      if (verseMode && !usingSearch) {
-        const linkedIds = new Set(links.flatMap(link => [link.source, link.target]));
-        nodes = nodes.filter(node => linkedIds.has(node.id));
-      }
-
-      Graph.graphData({ nodes, links });
-      Graph.nodeColor(node => node.id === state.selectedNodeId ? '#22c55e' : (COLORS[node.testament] || '#aaa'));
+      const mobile = isMobile();
       Graph.nodeVal(node => {
-        if (verseMode) return Math.max(isMobile() ? 2.8 : 3.4, (Math.pow(node.weight, 0.35) / (isMobile() ? 2.5 : 2.0)) * verseZoom.nodeScale);
-        return Math.max(2, Math.pow(node.weight, 0.35) / (isMobile() ? 3.6 : 2.8));
+        const weight = Math.max(node.weight, 1);
+        if (verseMode) return Math.max(mobile ? 2.8 : 3.4, (Math.pow(weight, 0.35) / (mobile ? 2.5 : 2.0)) * verseZoom.nodeScale);
+        return Math.max(2, Math.pow(weight, 0.35) / (mobile ? 3.6 : 2.8));
       });
       Graph.linkWidth(link => {
-        if (verseMode) return 0.05 + Math.log10(link.weight + 1) * verseZoom.linkWidthScale;
-        return 0.25 + Math.log10(link.weight + 1) * (isMobile() ? 0.65 : 0.9);
+        if (verseMode) return 0.05 + Math.log10(link.weight + 1) * (state.focusId ? 0.4 : verseZoom.linkWidthScale);
+        return 0.25 + Math.log10(link.weight + 1) * (mobile ? 0.65 : 0.9);
       });
-      Graph.linkOpacity(verseMode ? verseZoom.linkOpacity : (isMobile() ? 0.18 : 0.25));
-      Graph.linkDirectionalParticles(link => (!verseMode && !isMobile() && link.weight > 200) ? 2 : 0);
-      Graph.d3Force('charge').strength(
-        verseMode ? verseZoom.charge : state.level === 'chapter' ? (isMobile() ? -60 : -80) : (isMobile() ? -60 : -80)
-      );
+      Graph.linkOpacity(state.focusId ? 0.35 : verseMode ? verseZoom.linkOpacity : (mobile ? 0.18 : 0.25));
+      Graph.linkDirectionalParticles(link => (!verseMode && !mobile && link.weight > 200) ? 2 : 0);
+      Graph.d3Force('charge').strength(verseMode ? verseZoom.charge : (mobile ? -60 : -80));
       Graph.d3Force('link').distance(() => {
         if (verseMode) return verseZoom.distance;
-        return state.level === 'book' ? (isMobile() ? 110 : 140) : (isMobile() ? 60 : 80);
+        return level === 'book' ? (mobile ? 110 : 140) : (mobile ? 60 : 80);
       });
+      Graph.graphData({ nodes, links });
+      state.shownNodes = nodes;
+      refreshSelection();
 
-      const note = search
-        ? `Filtered by “${search}”.`
-        : verseMode
-          ? `Verse view is zoom-aware: ${verseZoom.label === 'overview' ? 'zoom in to reveal more links' : verseZoom.label === 'mid-zoom' ? 'you are seeing medium-detail link density' : 'close-up mode is showing deeper verse detail'}. Showing ${links.length.toLocaleString()} strongest links at this zoom level.`
-          : isMobile()
-            ? 'Tap nodes for focus. Use Controls for filters.'
-            : 'Hover a node or link for details.';
+      const note = state.focusId
+        ? `Connections of ${escapeHtml(humanRef(state.focusId))}${picked.length === FOCUS_LIMIT ? ` (strongest ${FOCUS_LIMIT})` : ''}.`
+        : matches
+          ? `Filtered by “${escapeHtml(query)}”.`
+          : band
+            ? `${band === 'overview' ? 'Zoom in to reveal more links.' : band === 'mid-zoom' ? 'Medium detail; zoom in for more.' : 'Close-up: deepest verse detail.'} Showing the ${links.length.toLocaleString()} strongest links.`
+            : mobile ? 'Tap a node to see what it connects to.' : 'Click a node to see what it connects to.';
 
-      info.innerHTML = `<h3>${state.level[0].toUpperCase() + state.level.slice(1)} view</h3>
-        <p><b>Nodes shown:</b> ${nodes.length.toLocaleString()}</p>
-        <p><b>Links shown:</b> ${links.length.toLocaleString()}</p>
-        <p><b>Minimum weight:</b> ${effectiveMinWeight}</p>
-        <p class="muted">${note}</p>`;
+      statusEl.innerHTML = `<h3>${level[0].toUpperCase() + level.slice(1)} view</h3>
+        <p class="muted small">${nodes.length.toLocaleString()} nodes · ${links.length.toLocaleString()} links${state.focusId ? '' : ` · min weight ${effectiveMinWeight}`}</p>
+        <p class="muted small">${note}</p>`;
     }
 
     document.getElementById('level').addEventListener('change', e => setLevel(e.target.value));
     document.getElementById('levelMobile').addEventListener('change', e => setLevel(e.target.value));
     document.getElementById('minWeight').addEventListener('input', e => setMinWeight(e.target.value));
     document.getElementById('minWeightMobile').addEventListener('input', e => setMinWeight(e.target.value));
-    document.getElementById('search').addEventListener('input', e => { state.selectedNodeId = null; setSearch(e.target.value); });
-    document.getElementById('searchMobile').addEventListener('input', e => { state.selectedNodeId = null; setSearch(e.target.value); });
-    document.getElementById('resetCamera').addEventListener('click', () => Graph.cameraPosition({ x: 0, y: 0, z: isMobile() ? 520 : 450 }, { x: 0, y: 0, z: 0 }, 1000));
-    document.getElementById('resetCameraMobile').addEventListener('click', () => Graph.cameraPosition({ x: 0, y: 0, z: isMobile() ? 520 : 450 }, { x: 0, y: 0, z: 0 }, 1000));
+    document.getElementById('search').addEventListener('input', e => setSearch(e.target.value));
+    document.getElementById('searchMobile').addEventListener('input', e => setSearch(e.target.value));
+    document.getElementById('resetCamera').addEventListener('click', () => Graph.cameraPosition(defaultCameraPosition(), { x: 0, y: 0, z: 0 }, 1000));
+    document.getElementById('resetCameraMobile').addEventListener('click', () => Graph.cameraPosition(defaultCameraPosition(), { x: 0, y: 0, z: 0 }, 1000));
     document.getElementById('search').addEventListener('focus', () => state.search.trim() && updateSearchResults());
     document.getElementById('searchMobile').addEventListener('focus', () => state.search.trim() && updateSearchResults());
     document.getElementById('menuButton').addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
-    viz.addEventListener('wheel', () => { if (state.level === 'verse') setTimeout(render, 80); }, { passive: true });
-    viz.addEventListener('touchend', () => { if (state.level === 'verse') setTimeout(render, 120); }, { passive: true });
 
     [searchResults, searchResultsMobile].forEach(panel => {
       panel.addEventListener('click', (e) => {
@@ -733,6 +897,18 @@
         if (!button) return;
         focusNode(button.dataset.id, button.dataset.level);
       });
+    });
+
+    details.addEventListener('click', (e) => {
+      const connection = e.target.closest('.conn');
+      if (connection) return focusNode(connection.dataset.id, connection.dataset.level);
+      const action = e.target.closest('[data-action]')?.dataset.action;
+      if (action === 'focus') focusNode(state.selectedNodeId, state.level);
+      else if (action === 'unfocus') unfocus();
+      else if (action === 'close') {
+        if (state.focusId) unfocus();
+        clearSelection();
+      }
     });
 
     document.addEventListener('click', (e) => {
@@ -745,7 +921,11 @@
 
     window.addEventListener('resize', () => {
       resizeGraph();
-      render();
+      // Sizes depend on the mobile breakpoint; skip the re-layout for ordinary resizes.
+      if (isMobile() !== state.wasMobile) {
+        state.wasMobile = isMobile();
+        render();
+      }
       if (!isMobile()) document.body.classList.remove('sidebar-open');
     });
 
@@ -755,6 +935,7 @@
       }
     });
 
+    state.wasMobile = isMobile();
     loadAll();
   </script>
 </body>
